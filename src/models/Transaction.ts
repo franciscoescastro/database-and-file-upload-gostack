@@ -39,6 +39,10 @@ class Transaction {
   public isIncome(): boolean {
     return this.type === 'income'
   }
+
+  public isOutcome(): boolean {
+    return this.type === 'outcome'
+  }
 }
 
 export default Transaction

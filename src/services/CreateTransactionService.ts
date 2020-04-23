@@ -1,4 +1,4 @@
-import { getRepository, getCustomRepository } from 'typeorm'
+import { getRepository, getCustomRepository, Repository } from 'typeorm'
 import AppError from '../errors/AppError'
 
 import Transaction from '../models/Transaction'
@@ -9,39 +9,51 @@ interface Request {
   title: string
   value: number
   type: 'income' | 'outcome'
-  categoryTitle: string
+  category: string
 }
 
 class CreateTransactionService {
+  private transactionsRepository: TransactionsRepository
+
+  private categoriesRepository: Repository<Category>
+
+  constructor() {
+    this.transactionsRepository = getCustomRepository(TransactionsRepository)
+    this.categoriesRepository = getRepository(Category)
+  }
+
   public async execute({
     title,
     value,
     type,
-    categoryTitle,
+    category: categoryTitle,
   }: Request): Promise<Transaction> {
-    const categoriesRepository = getRepository(Category)
+    const transaction = this.transactionsRepository.create({
+      title,
+      value,
+      type,
+    })
 
-    let category = await categoriesRepository.findOne({
+    if (transaction.isOutcome()) {
+      const { total } = await this.transactionsRepository.getBalance()
+      if (total < transaction.value)
+        throw new AppError('Outcome cannot be bigger than total.')
+    }
+
+    let category = await this.categoriesRepository.findOne({
       where: { title: categoryTitle },
     })
 
     if (!category) {
-      category = categoriesRepository.create({
+      category = this.categoriesRepository.create({
         title: categoryTitle,
       })
 
-      await categoriesRepository.save(category)
+      await this.categoriesRepository.save(category)
     }
 
-    const transactionsRepository = getCustomRepository(TransactionsRepository)
-    const transaction = transactionsRepository.create({
-      title,
-      value,
-      type,
-      categoryId: category.id,
-    })
-
-    await transactionsRepository.save(transaction)
+    transaction.categoryId = category.id
+    await this.transactionsRepository.save(transaction)
 
     return transaction
   }
